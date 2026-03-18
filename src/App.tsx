@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BookOpen, MessageSquare, Send, Sparkles, ChevronLeft, PlusCircle, Loader2, Users, User, AlertCircle } from 'lucide-react';
+import { BookOpen, MessageSquare, Send, Sparkles, ChevronLeft, PlusCircle, Loader2, Users, User, AlertCircle, Key, Settings, ExternalLink } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { generateDiscussionGuide, handleDiscussionExpansion, type UserRole } from './services/geminiService';
 import { clsx, type ClassValue } from 'clsx';
@@ -18,6 +18,8 @@ interface DiscussionState {
 }
 
 export default function App() {
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [tempApiKey, setTempApiKey] = useState('');
   const [verses, setVerses] = useState('');
   const [theme, setTheme] = useState('');
   const [role, setRole] = useState<UserRole>('leader');
@@ -39,14 +41,22 @@ export default function App() {
     }
   }, [discussion?.chat, isProcessing]);
 
+  const handleApiKeySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tempApiKey.trim()) {
+      setApiKey(tempApiKey.trim());
+      setError(null);
+    }
+  };
+
   const handleStartDiscussion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!verses || !theme) return;
+    if (!verses || !theme || !apiKey) return;
 
     setIsGenerating(true);
     setError(null);
     try {
-      const guide = await generateDiscussionGuide(verses, theme, role);
+      const guide = await generateDiscussionGuide(verses, theme, role, apiKey);
       setDiscussion({
         verses,
         theme,
@@ -57,6 +67,10 @@ export default function App() {
     } catch (err: any) {
       console.error("Failed to generate guide:", err);
       setError(err.message || "An unexpected error occurred while preparing the Word. Please check your connection and try again.");
+      // If API key is invalid, maybe reset it
+      if (err.message?.toLowerCase().includes("api key")) {
+        setApiKey(null);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -64,7 +78,7 @@ export default function App() {
 
   const handleExpansion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim() || !discussion) return;
+    if (!userInput.trim() || !discussion || !apiKey) return;
 
     const input = userInput;
     setUserInput('');
@@ -83,19 +97,24 @@ export default function App() {
         discussion.role,
         discussion.guide,
         discussion.chat,
-        input
+        input,
+        apiKey
       );
       
       setDiscussion(prev => prev ? {
         ...prev,
         chat: [...prev.chat, { role: 'assistant', content: response || '' }]
       } : null);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to expand discussion:", err);
       setDiscussion(prev => prev ? {
         ...prev,
         chat: [...prev.chat, { role: 'assistant', content: "I apologize, I am having trouble connecting to the source of wisdom right now. Please try again in a moment." }]
       } : null);
+      if (err.message?.toLowerCase().includes("api key")) {
+        setApiKey(null);
+        setDiscussion(null);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -108,11 +127,90 @@ export default function App() {
     setError(null);
   };
 
+  const changeApiKey = () => {
+    setApiKey(null);
+    setTempApiKey('');
+    setDiscussion(null);
+    setError(null);
+  };
+
+  // API Key Screen
+  if (!apiKey) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-[#fdfcf9]">
+        <header className="w-full max-w-md mb-12 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#5A5A40] text-white mb-6 shadow-lg">
+            <Key size={32} />
+          </div>
+          <h1 className="text-4xl font-serif font-bold text-[#2c2c2c] mb-2 tracking-tight">
+            Welcome to Shepherd's Guide
+          </h1>
+          <p className="text-gray-600 font-serif italic">
+            Please provide your Gemini API key to begin.
+          </p>
+        </header>
+
+        <main className="w-full max-w-md">
+          <div className="bg-white rounded-[32px] shadow-xl shadow-black/5 p-8 border border-gray-100">
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700">
+                <AlertCircle className="shrink-0 mt-0.5" size={18} />
+                <p className="text-sm">{error}</p>
+              </div>
+            )}
+            
+            <form onSubmit={handleApiKeySubmit} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-widest font-semibold text-gray-500 ml-1">
+                  Gemini API Key
+                </label>
+                <input
+                  type="password"
+                  value={tempApiKey}
+                  onChange={(e) => setTempApiKey(e.target.value)}
+                  placeholder="Enter your API key here..."
+                  className="w-full p-4 rounded-2xl bg-[#f5f5f0] border-none focus:ring-2 focus:ring-[#5A5A40] transition-all text-lg"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-[#5A5A40] hover:bg-[#4a4a34] text-white py-4 rounded-full font-medium text-lg transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+              >
+                Continue to App
+              </button>
+            </form>
+
+            <div className="mt-8 pt-6 border-top border-gray-100 text-center">
+              <a 
+                href="https://aistudio.google.com/app/apikey" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-sm text-[#5A5A40] hover:underline flex items-center justify-center gap-1"
+              >
+                Get a free API key from Google AI Studio
+                <ExternalLink size={14} />
+              </a>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (!discussion) {
     return (
       <div className="min-h-screen flex flex-col items-center p-4 md:p-8 bg-[#fdfcf9]">
         {/* Header */}
-        <header className="w-full max-w-4xl mb-12 text-center mt-8">
+        <header className="w-full max-w-4xl mb-12 text-center mt-8 relative">
+          <button 
+            onClick={changeApiKey}
+            className="absolute right-0 top-0 p-2 text-gray-400 hover:text-[#5A5A40] transition-colors"
+            title="Change API Key"
+          >
+            <Settings size={20} />
+          </button>
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#5A5A40] text-white mb-6 shadow-lg">
             <BookOpen size={32} />
           </div>
@@ -249,13 +347,22 @@ export default function App() {
             <p className="text-xs text-gray-500 font-serif italic">{discussion.verses}</p>
           </div>
         </div>
-        <button 
-          onClick={reset}
-          className="flex items-center gap-2 px-4 py-2 bg-[#5A5A40] text-white rounded-full text-sm font-medium hover:bg-[#4a4a34] transition-all shadow-sm"
-        >
-          <PlusCircle size={16} />
-          <span className="hidden sm:inline">New Study</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={changeApiKey}
+            className="p-2 text-gray-400 hover:text-[#5A5A40] transition-colors"
+            title="Change API Key"
+          >
+            <Settings size={20} />
+          </button>
+          <button 
+            onClick={reset}
+            className="flex items-center gap-2 px-4 py-2 bg-[#5A5A40] text-white rounded-full text-sm font-medium hover:bg-[#4a4a34] transition-all shadow-sm"
+          >
+            <PlusCircle size={16} />
+            <span className="hidden sm:inline">New Study</span>
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 w-full max-w-4xl mx-auto p-4 md:p-8 pb-32">

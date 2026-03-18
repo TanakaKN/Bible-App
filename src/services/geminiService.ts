@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 
 export type UserRole = 'leader' | 'participant';
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const getAI = (apiKey: string) => new GoogleGenAI({ apiKey });
 
 export const getSystemInstruction = (role: UserRole) => `You are a Senior Pastor and Bible Guru with decades of experience in leading small group discussions and theological study. Your tone is warm, encouraging, wise, and deeply rooted in scripture.
 
@@ -24,8 +24,8 @@ When the user pastes an "unexpected point" or a question:
 
 Always format your responses in clear Markdown. Use the 'Cormorant Garamond' font style for headings (which is handled by the UI).`;
 
-export async function generateDiscussionGuide(verses: string, theme: string, role: UserRole) {
-  const ai = getAI();
+export async function generateDiscussionGuide(verses: string, theme: string, role: UserRole, apiKey: string) {
+  const ai = getAI(apiKey);
   const model = "gemini-3.1-pro-preview";
   const prompt = `Role: ${role}\nTheme: ${theme}\nVerses: ${verses}\n\nPlease prepare a discussion guide tailored to my role.`;
   
@@ -43,8 +43,11 @@ export async function generateDiscussionGuide(verses: string, theme: string, rol
     }
 
     return response.text;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini API Error:", error);
+    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("invalid API key")) {
+      throw new Error("The API key provided is invalid. Please check your key and try again.");
+    }
     throw error;
   }
 }
@@ -55,9 +58,10 @@ export async function handleDiscussionExpansion(
   role: UserRole,
   guide: string, 
   chatHistory: { role: 'user' | 'assistant'; content: string }[], 
-  userInput: string
+  userInput: string,
+  apiKey: string
 ) {
-  const ai = getAI();
+  const ai = getAI(apiKey);
   const model = "gemini-3.1-pro-preview";
   
   const historyString = chatHistory.map(m => `${m.role === 'user' ? 'User' : 'Pastor'}: ${m.content}`).join('\n\n');
